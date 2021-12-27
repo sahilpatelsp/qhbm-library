@@ -1,4 +1,3 @@
-# pylint: skip-file
 # Copyright 2021 The QHBM Library Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,8 +55,9 @@ class VQTTest(tf.test.TestCase):
       for _ in range(num_random_hamiltonians):
         cirq_ham = test_util.get_random_pauli_sum(self.raw_qubits)
         tf_ham = tfq.convert_to_tensor([cirq_ham])
-        loss = vqt.vqt(test_qhbm, num_samples, tf_ham, beta)
-        loss_copy = vqt.vqt(test_qhbm_copy, num_samples, tf_ham, beta)
+        loss = vqt.vqt(test_qhbm, tf_ham, beta=beta, num_samples=num_samples)
+        loss_copy = vqt.vqt(
+            test_qhbm_copy, tf_ham, beta=beta, num_samples=num_samples)
         self.assertAllClose(loss_copy, loss, rtol=RTOL)
 
   def test_zero_grad(self):
@@ -73,7 +73,11 @@ class VQTTest(tf.test.TestCase):
     test_qnn.values.assign(tf.constant([1.0]))
     test_qhbm = qhbm.QHBM(test_ebm, test_qnn)
     with tf.GradientTape() as tape:
-      loss = vqt.vqt(test_qhbm, tf.constant(int(5e6)), tf_ham, tf.constant(1.0))
+      loss = vqt.vqt(
+          test_qhbm,
+          tf_ham,
+          beta=tf.constant(1.0),
+          num_samples=tf.constant(int(5e6)))
     gradient = tape.gradient(loss, test_qhbm.trainable_variables)
     for grad in gradient:
       self.assertAllClose(grad, tf.zeros_like(grad), rtol=RTOL)
@@ -81,10 +85,8 @@ class VQTTest(tf.test.TestCase):
 
   def test_loss_value_x_rot(self):
     """Confirms correct values for a single qubit X rotation with H=Y.
-
     See the colab notebook at the following link in for derivations:
     https://colab.research.google.com/drive/14987JCMju_8AVvvVoojwe6hA7Nlw-Dhe?usp=sharing
-
     Since each qubit is independent, the loss is the sum over the individual
     qubit losses, and the gradients are the the per-qubit gradients.
     """
@@ -133,7 +135,8 @@ class VQTTest(tf.test.TestCase):
         self.assertAllClose(actual_entropy, expected_entropy, rtol=RTOL)
 
         with tf.GradientTape() as tape:
-          actual_loss = vqt_func(test_qhbm, test_num_samples, test_h, test_beta)
+          actual_loss = vqt_func(
+              test_qhbm, test_h, beta=test_beta, num_samples=test_num_samples)
         expected_loss = test_beta * expected_expectation - expected_entropy
         self.assertAllClose(actual_loss, expected_loss, rtol=RTOL)
 
@@ -146,6 +149,23 @@ class VQTTest(tf.test.TestCase):
         self.assertAllClose(
             actual_thetas_grads, expected_thetas_grads, rtol=RTOL)
         self.assertAllClose(actual_phis_grads, expected_phis_grads, rtol=RTOL)
+
+  def test_modular_hamiltonian(self):
+    for num_qubits in [1, 2, 3, 4, 5]:
+      qubits = cirq.GridQubit.rect(1, num_qubits)
+      test_qhbm = test_util.get_random_qhbm(
+          qubits, 1, "VQTModHamTest{}".format(num_qubits))
+      test_qhbm_copy = test_qhbm.copy()
+      with tf.GradientTape() as tape:
+        loss = vqt.vqt(
+            test_qhbm,
+            test_qhbm_copy,
+            beta=tf.constant(1.0),
+            num_samples=tf.constant(int(5e6)))
+      gradient = tape.gradient(loss, test_qhbm.trainable_variables)
+      for grad in gradient:
+        self.assertAllClose(grad, tf.zeros_like(grad), rtol=RTOL)
+      self.assertAllClose(loss, -test_qhbm.log_partition_function(), rtol=RTOL)
 
   def test_hypernetwork(self):
     for num_qubits in [1, 2, 3, 4, 5]:
@@ -182,8 +202,11 @@ class VQTTest(tf.test.TestCase):
               tf.reshape(output[index:index + size], shape))
           index += size
         test_qhbm.trainable_variables = output_trainable_variables
-        loss = vqt.vqt(test_qhbm, tf.constant(int(5e6)), tf_ham,
-                       tf.constant(1.0))
+        loss = vqt.vqt(
+            test_qhbm,
+            tf_ham,
+            beta=tf.constant(1.0),
+            num_samples=tf.constant(int(5e6)))
       grads = tape.gradient(loss, [
           hypernetwork.trainable_variables, output,
           test_qhbm.trainable_variables
@@ -213,8 +236,11 @@ class VQTTest(tf.test.TestCase):
               tf.reshape(output[index:index + size], shape))
           index += size
         test_qhbm.trainable_variables = output_trainable_variables
-        loss = vqt.vqt(test_qhbm, tf.constant(int(5e6)), tf_ham,
-                       tf.constant(1.0))
+        loss = vqt.vqt(
+            test_qhbm,
+            tf_ham,
+            beta=tf.constant(1.0),
+            num_samples=tf.constant(int(5e6)))
       grads = tape.gradient(loss, [c, test_qhbm.trainable_variables])
       c_grad = grads[0]
       qhbm_grads = grads[1]

@@ -1,4 +1,3 @@
-# pylint: skip-file
 # Copyright 2021 The QHBM Library Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -548,6 +547,14 @@ class EBM(tf.keras.Model):
   def is_analytic(self):
     return self._is_analytic
 
+  @property
+  def trainable_variables(self):
+    return self._energy_function.trainable_variables
+
+  @trainable_variables.setter
+  def trainable_variables(self, value):
+    self._energy_function.trainable_variables = value
+
   def copy(self):
     if self._energy_sampler is not None:
       energy_sampler = self._energy_sampler.copy()
@@ -559,7 +566,7 @@ class EBM(tf.keras.Model):
         energy_function,
         energy_sampler,
         is_analytic=self.is_analytic,
-        name=self.name)
+        name=f'{self.name}_copy')
 
   def energy(self, bitstrings):
     return self._energy_function.energy(bitstrings)
@@ -589,7 +596,7 @@ class EBM(tf.keras.Model):
 
   def probabilities(self):
     if self.is_analytic:
-      return tf.exp(-self.ebm.energies()) / tf.exp(
+      return tf.exp(-self.energies()) / tf.exp(
           self.log_partition_function())
     raise NotImplementedError()
 
@@ -646,7 +653,7 @@ class Bernoulli(EBM):
 
   def copy(self):
     bernoulli = Bernoulli(
-        self.num_bits, is_analytic=self.is_analytic, name=self.name)
+        self.num_bits, is_analytic=self.is_analytic, name=f'{self.name}_copy')
     bernoulli.kernel.assign(self.kernel)
     return bernoulli
 
@@ -665,7 +672,6 @@ class Bernoulli(EBM):
 
   def sample(self, num_samples, unique=True):
     r"""Fairly samples from the EBM defined by `energy`.
-
         For Bernoulli distribution, let $p$ be the probability of bit being `1`.
         In this case, we have $p = \frac{e^{theta}}{{e^{theta}+e^{-theta}}}$.
         Therefore, each independent logit is:
